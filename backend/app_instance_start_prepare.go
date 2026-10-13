@@ -2,6 +2,7 @@ package backend
 
 import (
 	"ant-chrome/backend/internal/browser"
+	"ant-chrome/backend/internal/config"
 	"ant-chrome/backend/internal/logger"
 	"fmt"
 	"os"
@@ -32,6 +33,7 @@ type browserStartPlan struct {
 	effectiveProxy       string
 	acquiredProxyBridge  profileProxyBridgeRef
 	releaseProxyBridge   bool
+	releaseTraffic       bool
 	extensionWarning     string
 	assignedDebugPort    int
 	startReadyTimeout    time.Duration
@@ -64,6 +66,9 @@ func (input browserStartInput) hasTemporaryProxy() bool {
 func (plan *browserStartPlan) releaseBridgeIfNeeded(a *App) {
 	if plan == nil || a == nil {
 		return
+	}
+	if plan.releaseTraffic {
+		a.stopProfileTraffic(plan.profile.ProfileId)
 	}
 	if plan.releaseProxyBridge {
 		a.releaseProxyBridgeRef(plan.acquiredProxyBridge)
@@ -166,11 +171,19 @@ func (a *App) prepareBrowserStartPlan(input browserStartInput, profile *BrowserP
 		return nil, startErr
 	}
 
-	instanceArgs := buildBrowserLaunchArgs(userDataDir, assignedDebugPort, effectiveProxy, fingerprintLaunchArgs, sanitizedProfileLaunchArgs, sanitizedExtraLaunchArgs, launchTargets, restoreLastSession)
+	effectiveProxy, metered, err := a.startProfileTraffic(input.ProfileID, effectiveProxy, assignedDebugPort)
+	if err != nil {
+		if releaseProxyBridge {
+			a.releaseProxyBridgeRef(acquiredProxyBridge)
+		}
+		return nil, fmt.Errorf("实例启动失败：无法建立流量统计连接：%w", err)
+	}
+
+	instanceArgs := buildBrowserLaunchArgs(userDataDir, assignedDebugPort, effectiveProxy, fingerprintLaunchArgs, sanitizedProfileLaunchArgs, sanitizedExtraLaunchArgs, launchTargets, restoreLastSession, config.BrowserDownloadPolicy(a.config))
 	// 插件持久安装助手进程复用实例的调试端口与代理/指纹参数：
 	// 若此时实例浏览器尚未运行，安装助手进程就是实例浏览器本身，
 	// 缺少调试端口会导致后续正式启动被 Chrome 单实例交接、误报“就绪前退出”。
-	extensionInstallArgs := buildBrowserLaunchArgs(userDataDir, assignedDebugPort, effectiveProxy, fingerprintLaunchArgs, sanitizedProfileLaunchArgs, sanitizedExtraLaunchArgs, nil, restoreLastSession)
+	extensionInstallArgs := buildBrowserLaunchArgs(userDataDir, assignedDebugPort, effectiveProxy, fingerprintLaunchArgs, sanitizedProfileLaunchArgs, sanitizedExtraLaunchArgs, nil, restoreLastSession, config.BrowserDownloadPolicy(a.config))
 	_, extensionWarnings := a.browserMgr.PrepareProfileExtensions(profile, chromeBinaryPath, userDataDir, extensionInstallArgs)
 	extensionWarning := joinBrowserStartExtensionWarnings(extensionWarnings)
 
@@ -184,6 +197,7 @@ func (a *App) prepareBrowserStartPlan(input browserStartInput, profile *BrowserP
 		effectiveProxy:       effectiveProxy,
 		acquiredProxyBridge:  acquiredProxyBridge,
 		releaseProxyBridge:   releaseProxyBridge,
+		releaseTraffic:       metered,
 		extensionWarning:     extensionWarning,
 		assignedDebugPort:    assignedDebugPort,
 		startReadyTimeout:    startReadyTimeout,
@@ -345,7 +359,7 @@ func (a *App) prepareBrowserLaunchContext(input browserStartInput, profile *Brow
 	return sanitizedProfileLaunchArgs, sanitizedExtraLaunchArgs, fingerprintLaunchArgs, chromeBinaryPath, userDataDir, nil
 }
 
-func buildBrowserLaunchArgs(userDataDir string, debugPort int, effectiveProxy string, fingerprintLaunchArgs []string, sanitizedProfileLaunchArgs []string, sanitizedExtraLaunchArgs []string, launchTargets []string, restoreLastSession bool) []string {
+func buildBrowserLaunchArgs(userDataDir string, debugPort int, effectiveProxy string, fingerprintLaunchArgs []string, sanitizedProfileLaunchArgs []string, sanitizedExtraLaunchArgs []string, launchTargets []string, restoreLastSession bool, downloadPolicy string) []string {
 	args := []string{
 		fmt.Sprintf("--user-data-dir=%s", userDataDir),
 		fmt.Sprintf("--remote-debugging-port=%d", debugPort),
@@ -364,5 +378,5 @@ func buildBrowserLaunchArgs(userDataDir string, debugPort int, effectiveProxy st
 	args = append(args, normalizeNonEmptyStrings(fingerprintLaunchArgs)...)
 	args = append(args, sanitizedProfileLaunchArgs...)
 	args = append(args, sanitizedExtraLaunchArgs...)
-	return browser.BuildLaunchArgs(args, launchTargets)
+	return browser.BuildLaunchArgs(applyBrowserBackgroundDownloadPolicy(args, downloadPolicy), launchTargets)
 }

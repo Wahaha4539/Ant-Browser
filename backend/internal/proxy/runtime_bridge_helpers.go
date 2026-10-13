@@ -162,27 +162,44 @@ func checkSocks5HandshakeContext(ctx context.Context, addr string, timeout time.
 	return nil
 }
 
-// nextAvailablePort 分配一个可用端口。
-// 采用二次验证策略：分配后立即再次绑定确认未被其他进程抢占，
-// 并在 EnsureBridge 层面加重试，彻底消除 TOCTOU 竞争窗口。
+// listenTCPAndUDP 检查同一回环端口能否同时绑定 TCP 和 UDP。
+// port 为 0 时先由 TCP 分配端口，再检查该端口的 UDP 绑定。
+func listenTCPAndUDP(port int) (net.Listener, net.PacketConn, error) {
+	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		return nil, nil, err
+	}
+	packetConn, err := net.ListenPacket("udp", listener.Addr().String())
+	if err != nil {
+		listener.Close()
+		return nil, nil, err
+	}
+	return listener, packetConn, nil
+}
+
+// nextAvailablePort 分配一个 TCP 和 UDP 均可用的端口。
+// 采用二次绑定验证，并在 EnsureBridge 层面重试，降低释放端口后
+// 到内核启动前被其他进程抢占的风险，但无法彻底消除该竞争窗口。
 func nextAvailablePort() (int, error) {
 	return nextAvailablePortWithRetry(10)
 }
 
 func nextAvailablePortWithRetry(maxRetries int) (int, error) {
 	for i := 0; i < maxRetries; i++ {
-		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		listener, packetConn, err := listenTCPAndUDP(0)
 		if err != nil {
 			continue
 		}
 		port := listener.Addr().(*net.TCPAddr).Port
 		listener.Close()
+		packetConn.Close()
 		time.Sleep(10 * time.Millisecond)
-		verifyListener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		verifyListener, verifyPacketConn, err := listenTCPAndUDP(port)
 		if err != nil {
 			continue
 		}
 		verifyListener.Close()
+		verifyPacketConn.Close()
 		return port, nil
 	}
 	return 0, fmt.Errorf("无法分配可用端口，已重试 %d 次", maxRetries)

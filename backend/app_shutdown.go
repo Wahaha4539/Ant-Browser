@@ -99,6 +99,7 @@ func (a *App) stopRuntimeServices() {
 			a.speedScheduler = nil
 		}
 		a.stopTrackedBrowserProcesses()
+		a.stopBrowserTrafficHelper()
 		if a.xrayMgr != nil {
 			a.xrayMgr.StopAll()
 		}

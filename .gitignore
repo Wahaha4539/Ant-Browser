@@ -142,3 +142,8 @@ accounts.yml
 *.backup
 *.old
 *.orig
+
+# Isolated traffic verification output (may contain temporary proxy settings)
+build/traffic-e2e-*/
+frontend/__traffic_test.html
+frontend/__traffic_test.tsx

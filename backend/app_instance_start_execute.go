@@ -40,6 +40,9 @@ func (a *App) startBrowserProfileWithPlan(input browserStartInput, plan *browser
 		profile.LastError = startErr.Error()
 		return profile, startErr
 	}
+	if plan.releaseTraffic {
+		a.setProfileTrafficOwner(input.ProfileID, cmd.Process.Pid)
+	}
 	memoryLimitCleanup, err := applyBrowserProcessMemoryLimit(cmd, profile.MemoryLimitMB)
 	if err != nil {
 		_ = a.stopProcessCmd(cmd)
@@ -66,6 +69,7 @@ func (a *App) startBrowserProfileWithPlan(input browserStartInput, plan *browser
 		stableDebugPort, readyErr := waitBrowserDebugPortStable(plan.assignedDebugPort, plan.userDataDir, plan.startReadyTimeout, plan.startStableWindow, monitor)
 		if readyErr == nil {
 			a.markProfileRunningLocked(input.ProfileID, profile, cmd, cmd.Process.Pid, stableDebugPort, true, "")
+			plan.releaseTraffic = false
 			if plan.extensionWarning != "" {
 				profile.RuntimeWarning = plan.extensionWarning
 			}
@@ -152,6 +156,7 @@ func (a *App) startBrowserProfileWithPlan(input browserStartInput, plan *browser
 			runtimeWarning = runtimeWarning + "；" + plan.extensionWarning
 		}
 		a.markProfileRunningLocked(input.ProfileID, profile, cmd, cmd.Process.Pid, plan.assignedDebugPort, false, runtimeWarning)
+		plan.releaseTraffic = false
 		a.setBrowserProcessMonitorLocked(input.ProfileID, monitor)
 		if len(plan.deferredStartTargets) > 0 {
 			a.storeDeferredStartTargets(input.ProfileID, plan.deferredStartTargets, plan.deferredStartNewTabs)

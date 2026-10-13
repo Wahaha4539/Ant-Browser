@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"ant-chrome/backend/internal/logger"
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -45,7 +46,11 @@ func (m *SingBoxManager) restartBridgeOnSamePort(log *logger.Logger, key string,
 		logger.F("key", key[:8]),
 		logger.F("port", bridge.Port),
 	)
-	restarted, err := m.launchBridgeOnPort(log, key, binaryPath, cloneStringInterfaceMap(bridge.Outbound), bridge.Port, 1)
+	ctx := context.Background()
+	if bridge.BrowserDownloadProtection {
+		ctx = context.WithValue(ctx, browserDownloadProtectionKey{}, true)
+	}
+	restarted, err := m.launchBridgeOnPortContext(ctx, log, key, binaryPath, cloneStringInterfaceMap(bridge.Outbound), bridge.Port, 1)
 	if err != nil {
 		return err
 	}

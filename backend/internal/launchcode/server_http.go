@@ -5,6 +5,7 @@ import "net/http"
 func (s *LaunchServer) buildMux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", s.handleHealth)
+	mux.HandleFunc("/api/traffic", s.handleTraffic)
 	mux.HandleFunc("/api/automation/scripts", s.handleAutomationScripts)
 	mux.HandleFunc("/api/automation/scripts/", s.handleAutomationScriptByID)
 	mux.Handle("/api/automation/scripts/run", s.trackLaunchTask(http.HandlerFunc(s.handleAutomationScriptRun)))

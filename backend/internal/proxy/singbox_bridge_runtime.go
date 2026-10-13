@@ -72,7 +72,7 @@ func (m *SingBoxManager) ensureBridgeContext(ctx context.Context, proxyConfig st
 		return "", "", err
 	}
 
-	key := computeNodeKey(src)
+	key := bridgeKeyForContext(ctx, src)
 
 	if socksURL, reused := m.tryReuseBridge(key, pin); reused {
 		log.Info("复用 sing-box 桥接", logger.F("engine", "sing-box"), logger.F("key", key[:8]), logger.F("socks_url", socksURL))
@@ -150,7 +150,7 @@ func (m *SingBoxManager) launchBridgeOnPortContext(ctx context.Context, log *log
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	cfgPath, err := m.buildConfig(key, outbound, port)
+	cfgPath, err := m.buildConfigWithBrowserProtection(key, outbound, port, browserDownloadsProtected(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("sing-box 配置生成失败: %w", err)
 	}
@@ -185,13 +185,14 @@ func (m *SingBoxManager) launchBridgeOnPortContext(ctx context.Context, log *log
 	}
 
 	bridge := &SingBoxBridge{
-		NodeKey:    key,
-		Port:       port,
-		Cmd:        cmd,
-		Pid:        cmd.Process.Pid,
-		Running:    true,
-		Outbound:   cloneStringInterfaceMap(outbound),
-		LastUsedAt: time.Now(),
+		BrowserDownloadProtection: browserDownloadsProtected(ctx),
+		NodeKey:                   key,
+		Port:                      port,
+		Cmd:                       cmd,
+		Pid:                       cmd.Process.Pid,
+		Running:                   true,
+		Outbound:                  cloneStringInterfaceMap(outbound),
+		LastUsedAt:                time.Now(),
 	}
 	bridge.startExitWatcher()
 	log.Info("sing-box 内核进程已启动", logger.F("engine", "sing-box"), logger.F("key", key[:8]), logger.F("pid", bridge.Pid), logger.F("port", port))

@@ -80,6 +80,10 @@ func (m *SingBoxManager) resolveBinary() (string, error) {
 }
 
 func (m *SingBoxManager) buildConfig(key string, outbound map[string]interface{}, port int) (string, error) {
+	return m.buildConfigWithBrowserProtection(key, outbound, port, false)
+}
+
+func (m *SingBoxManager) buildConfigWithBrowserProtection(key string, outbound map[string]interface{}, port int, protected bool) (string, error) {
 	baseDir := m.resolveWorkdir(key)
 	if err := os.MkdirAll(baseDir, 0755); err != nil {
 		return "", err
@@ -122,6 +126,10 @@ func (m *SingBoxManager) buildConfig(key string, outbound map[string]interface{}
 		},
 	}
 
+	if protected {
+		route := cfg["route"].(map[string]interface{})
+		route["rules"] = browserSingBoxDownloadRules(route["rules"].([]interface{}))
+	}
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return "", err

@@ -26,6 +26,10 @@ func (m *XrayManager) ensureBridgeContext(ctx context.Context, proxyConfig strin
 		return "", "", err
 	}
 	src := resolveProxyConfig(proxyConfig, proxies, proxyId)
+	protected := browserDownloadsProtected(ctx)
+	if protected && strings.TrimSpace(src) == "" {
+		src = "direct://"
+	}
 	dnsServers := ""
 	if proxyId != "" {
 		for _, item := range proxies {
@@ -66,6 +70,9 @@ func (m *XrayManager) ensureBridgeContext(ctx context.Context, proxyConfig strin
 		preferredPort = chainCfg.LocalPort
 	} else {
 		directOutbound, shouldBridgeDirectProxy, err := buildDirectProxyBridgeOutbound(src)
+		if protected {
+			directOutbound, shouldBridgeDirectProxy, err = browserNativeXrayOutbound(src)
+		}
 		if err != nil {
 			log.Error("直连代理桥接配置解析失败", logger.F("error", err))
 			return "", "", err
@@ -101,7 +108,12 @@ func (m *XrayManager) ensureBridgeContext(ctx context.Context, proxyConfig strin
 			}
 		}
 	}
-	key := computeNodeKey(src + "\x00" + dnsServers)
+	if protected {
+		routes = browserXrayDownloadRules(routes)
+		// A protected bridge must not compete for a utility chain's fixed port.
+		preferredPort = 0
+	}
+	key := bridgeKeyForContext(ctx, src+"\x00"+dnsServers)
 
 	if socksURL, reused := m.tryReuseBridge(key, pin); reused {
 		log.Info("复用 xray 桥接进程", logger.F("engine", "xray"), logger.F("key", key), logger.F("socks_url", socksURL))
@@ -228,6 +240,8 @@ func (m *XrayManager) launchBridgeAttemptContext(ctx context.Context, log *logge
 
 	stderrFile, _ := os.Create(stderrPath)
 	if stderrFile != nil {
+		// Xray 的启动失败信息可能写入 stdout，合并保存以便诊断和重试。
+		cmd.Stdout = stderrFile
 		cmd.Stderr = stderrFile
 	}
 

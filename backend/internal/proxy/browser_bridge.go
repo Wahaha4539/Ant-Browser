@@ -44,6 +44,10 @@ func buildDirectProxyBridgeOutbound(src string) (map[string]interface{}, bool, e
 }
 
 func parseDirectProxyBridgeSpec(src string) (*directProxyBridgeSpec, error) {
+	return parseProxyBridgeSpec(src, true)
+}
+
+func parseProxyBridgeSpec(src string, requireAuth bool) (*directProxyBridgeSpec, error) {
 	raw := strings.TrimSpace(src)
 	if raw == "" {
 		return nil, nil
@@ -61,22 +65,33 @@ func parseDirectProxyBridgeSpec(src string) (*directProxyBridgeSpec, error) {
 	scheme := strings.ToLower(strings.TrimSpace(parsed.Scheme))
 	switch scheme {
 	case "socks5", "http", "https":
-		if parsed.User == nil {
-			return nil, nil
+		username, password := "", ""
+		if parsed.User != nil {
+			username = strings.TrimSpace(parsed.User.Username())
+			password, _ = parsed.User.Password()
 		}
-		username := strings.TrimSpace(parsed.User.Username())
-		if username == "" {
+		if requireAuth && username == "" {
 			return nil, nil
 		}
 		server := strings.TrimSpace(parsed.Hostname())
 		if server == "" {
 			return nil, fmt.Errorf("代理地址缺少主机名")
 		}
-		port, err := strconv.Atoi(parsed.Port())
+		portText := parsed.Port()
+		if portText == "" && !requireAuth {
+			switch scheme {
+			case "http":
+				portText = "80"
+			case "https":
+				portText = "443"
+			case "socks5":
+				portText = "1080"
+			}
+		}
+		port, err := strconv.Atoi(portText)
 		if err != nil || port < 1 || port > 65535 {
 			return nil, fmt.Errorf("代理端口无效")
 		}
-		password, _ := parsed.User.Password()
 		return &directProxyBridgeSpec{
 			Scheme:   scheme,
 			Server:   server,

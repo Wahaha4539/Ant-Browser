@@ -484,3 +484,17 @@ export interface BrowserGroupWithCount extends BrowserGroup {
   instanceCount: number
 }
 
+export interface BrowserTrafficSnapshot {
+  profileId: string
+  uploadedBytes: number
+  downloadedBytes: number
+  sessionUploadedBytes: number
+  sessionDownloadedBytes: number
+  uploadBytesPerSecond: number
+  downloadBytesPerSecond: number
+  startedAt: string
+  updatedAt: string
+  running: boolean
+  state: 'active' | 'stopped' | 'not_started' | 'unmetered'
+  message: string
+}

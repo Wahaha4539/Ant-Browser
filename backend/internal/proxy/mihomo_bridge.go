@@ -90,14 +90,18 @@ func (m *ClashManager) ensureNodeBridgeContext(ctx context.Context, proxyConfig 
 		return "", "", err
 	}
 	src := strings.TrimSpace(resolveProxyConfig(proxyConfig, proxies, proxyId))
+	protected := browserDownloadsProtected(ctx)
+	if protected && src == "" {
+		src = "direct://"
+	}
 	if src == "" {
 		return "", "", fmt.Errorf("未找到代理节点")
 	}
-	if strings.EqualFold(src, "direct://") {
+	if strings.EqualFold(src, "direct://") && !protected {
 		return "direct://", "", nil
 	}
 
-	key := computeNodeKey(src + "\x00mihomo")
+	key := bridgeKeyForContext(ctx, src+"\x00mihomo")
 	unlock := m.lockLaunchForKey(key)
 	defer unlock()
 
@@ -116,6 +120,9 @@ func (m *ClashManager) ensureNodeBridgeContext(ctx context.Context, proxyConfig 
 		return "", "", err
 	}
 	node, err := buildMihomoNode(src)
+	if protected {
+		node, err = browserMihomoNode(src)
+	}
 	if err != nil {
 		return "", "", err
 	}
@@ -127,7 +134,7 @@ func (m *ClashManager) ensureNodeBridgeContext(ctx context.Context, proxyConfig 
 	if err != nil {
 		return "", "", err
 	}
-	cfgPath, err := m.buildMihomoNodeConfig(key, node, port, controllerPort)
+	cfgPath, err := m.buildMihomoNodeConfigWithBrowserProtection(key, node, port, controllerPort, protected)
 	if err != nil {
 		return "", "", err
 	}
@@ -387,14 +394,21 @@ func (m *ClashManager) lockLaunchForKey(key string) func() {
 }
 
 func (m *ClashManager) buildMihomoNodeConfig(key string, node map[string]interface{}, port int, controllerPort int) (string, error) {
+	return m.buildMihomoNodeConfigWithBrowserProtection(key, node, port, controllerPort, false)
+}
+
+func (m *ClashManager) buildMihomoNodeConfigWithBrowserProtection(key string, node map[string]interface{}, port int, controllerPort int, protected bool) (string, error) {
 	baseDir := m.resolveMihomoWorkdir(key)
 	if err := os.MkdirAll(baseDir, 0o755); err != nil {
 		return "", err
 	}
-	name := strings.TrimSpace(getMapString(node, "name"))
-	if name == "" {
-		name = "node"
-		node["name"] = name
+	name := "DIRECT"
+	if node != nil {
+		name = strings.TrimSpace(getMapString(node, "name"))
+		if name == "" {
+			name = "node"
+			node["name"] = name
+		}
 	}
 	payload := map[string]interface{}{
 		"mixed-port":          port,
@@ -414,6 +428,12 @@ func (m *ClashManager) buildMihomoNodeConfig(key string, node map[string]interfa
 			},
 		},
 		"rules": []interface{}{"MATCH,proxy-out"},
+	}
+	if node == nil {
+		payload["proxies"] = []interface{}{}
+	}
+	if protected {
+		payload["rules"] = browserMihomoDownloadRules()
 	}
 	cfgPath := filepath.Join(baseDir, "mihomo-config.yaml")
 	data, err := yaml.Marshal(payload)

@@ -49,6 +49,7 @@ type App struct {
 	backgroundTasksBlocked        bool
 	maintenanceMu                 sync.Mutex
 	bridgeMu                      sync.Mutex
+	trafficMu                     sync.Mutex
 	profileBridgeRefs             map[string]profileProxyBridgeRef
 	deferredStartTargetsMu        sync.Mutex
 	deferredStartTargets          map[string]deferredStartTargetsPlan

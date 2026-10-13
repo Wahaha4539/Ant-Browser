@@ -137,6 +137,14 @@ func (a *App) BackupListLocalBackups(directory string) ([]backend.BackupLocalHis
 }
 
 func main() {
+	if len(os.Args) == 3 && os.Args[1] == "--browser-traffic-helper" {
+		if err := backend.RunBrowserTrafficHelper(os.Args[2]); err != nil {
+			log.Print(err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			lifecycle.LogPanic(appRoot, "process.panic", recovered)

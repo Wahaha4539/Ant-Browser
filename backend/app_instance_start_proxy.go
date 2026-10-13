@@ -20,13 +20,14 @@ func (a *App) resolveBrowserStartProxy(input browserStartInput, profile *Browser
 			logger.F("profile_id", profileID),
 			logger.F("proxy_id", profile.ProxyId),
 		)
-		return "direct://", profileProxyBridgeRef{}, false, nil
 	}
 
 	resolvedProxyID := strings.TrimSpace(profile.ProxyId)
 	resolvedProxyConfig := strings.TrimSpace(profile.ProxyConfig)
-	usingTemporaryProxy := input.hasTemporaryProxy()
-	if usingTemporaryProxy {
+	usingTemporaryProxy := !input.ForceDirectProxy && input.hasTemporaryProxy()
+	if input.ForceDirectProxy {
+		resolvedProxyID, resolvedProxyConfig = "", "direct://"
+	} else if usingTemporaryProxy {
 		var err error
 		resolvedProxyID, resolvedProxyConfig, err = resolveTemporaryBrowserStartProxy(input.TemporaryProxyID, input.TemporaryProxyConfig, proxies)
 		if err != nil {
@@ -75,7 +76,7 @@ func (a *App) resolveBrowserStartProxy(input browserStartInput, profile *Browser
 	if a.config != nil {
 		connectorType = config.NormalizeBrowserConnectorType(a.config.Browser.DefaultConnectorType)
 	}
-	resolution, err := proxy.ResolveProxyKernelForConnector(resolvedProxyConfig, proxies, resolvedProxyID, connectorType)
+	resolution, err := proxy.ResolveBrowserProxyKernelForConnector(resolvedProxyConfig, proxies, resolvedProxyID, connectorType, config.BrowserDownloadPolicy(a.config))
 	if err != nil {
 		startErr := fmt.Errorf("实例启动失败：%s", err.Error())
 		profile.LastError = startErr.Error()
@@ -89,6 +90,9 @@ func (a *App) resolveBrowserStartProxy(input browserStartInput, profile *Browser
 	}
 	log.Info("实际代理内核", logger.F("profile_id", profileID), logger.F("engine", resolution.Kernel), logger.F("protocol", resolution.Protocol), logger.F("proxy_id", resolvedProxyID), logger.F("reason", resolution.Reason))
 
+	if resolution.Protocol == "direct" && strings.TrimSpace(resolvedProxyConfig) == "" {
+		resolvedProxyConfig = "direct://"
+	}
 	switch resolution.Kernel {
 	case proxy.ProxyKernelMihomo:
 		if a.clashMgr == nil {
@@ -96,7 +100,7 @@ func (a *App) resolveBrowserStartProxy(input browserStartInput, profile *Browser
 			profile.LastError = startErr.Error()
 			return "", profileProxyBridgeRef{}, false, startErr
 		}
-		proxyURL, bridgeKey, bridgeErr := a.clashMgr.AcquireNodeBridge(resolvedProxyConfig, proxies, resolvedProxyID)
+		proxyURL, bridgeKey, bridgeErr := a.clashMgr.AcquireBrowserNodeBridge(resolvedProxyConfig, proxies, resolvedProxyID)
 		if bridgeErr != nil {
 			startErr := fmt.Errorf("实例启动失败：mihomo 代理桥接失败：%v", bridgeErr)
 			log.Error("代理桥接失败(mihomo)", logger.F("error", bridgeErr.Error()), logger.F("reason", startErr.Error()))
@@ -110,7 +114,7 @@ func (a *App) resolveBrowserStartProxy(input browserStartInput, profile *Browser
 			profile.LastError = startErr.Error()
 			return "", profileProxyBridgeRef{}, false, startErr
 		}
-		socksURL, bridgeKey, bridgeErr := a.singboxMgr.AcquireBridge(resolvedProxyConfig, proxies, resolvedProxyID)
+		socksURL, bridgeKey, bridgeErr := a.singboxMgr.AcquireBrowserBridge(resolvedProxyConfig, proxies, resolvedProxyID)
 		if bridgeErr != nil {
 			startErr := fmt.Errorf("实例启动失败：sing-box 代理桥接失败：%v", bridgeErr)
 			log.Error("代理桥接失败(sing-box)", logger.F("error", bridgeErr.Error()), logger.F("reason", startErr.Error()))
@@ -124,7 +128,7 @@ func (a *App) resolveBrowserStartProxy(input browserStartInput, profile *Browser
 			profile.LastError = startErr.Error()
 			return "", profileProxyBridgeRef{}, false, startErr
 		}
-		socksURL, bridgeKey, bridgeErr := a.xrayMgr.AcquireBridge(resolvedProxyConfig, proxies, resolvedProxyID)
+		socksURL, bridgeKey, bridgeErr := a.xrayMgr.AcquireBrowserBridge(resolvedProxyConfig, proxies, resolvedProxyID)
 		if bridgeErr != nil {
 			startErr := fmt.Errorf("实例启动失败：Xray 代理桥接失败：%v", bridgeErr)
 			log.Error("代理桥接失败(xray)", logger.F("error", bridgeErr.Error()), logger.F("reason", startErr.Error()))

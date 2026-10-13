@@ -1,3 +1,4 @@
+import { BrowserTrafficDetail } from '../components/BrowserTraffic'
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Copy, Globe, Play, RefreshCw, RotateCcw, Square } from 'lucide-react'
@@ -282,6 +283,8 @@ export function BrowserDetailPage() {
                 </div>
               </div>
             </Card>
+
+            <BrowserTrafficDetail profileId={profile.profileId} />
 
             <Card title="配置摘要">
               <div className="space-y-3 text-sm text-[var(--color-text-secondary)]">

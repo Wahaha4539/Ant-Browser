@@ -136,6 +136,7 @@ func normalizeConfig(config *Config) {
 	if config.Browser.StartStableWindowMs <= 0 {
 		config.Browser.StartStableWindowMs = defaultConfig.Browser.StartStableWindowMs
 	}
+	config.Browser.BackgroundDownloadPolicy = NormalizeBrowserDownloadPolicy(config.Browser.BackgroundDownloadPolicy)
 	config.Browser.DefaultConnectorType = NormalizeBrowserConnectorType(config.Browser.DefaultConnectorType)
 	if config.Browser.DefaultBookmarks == nil {
 		config.Browser.DefaultBookmarks = []BrowserBookmark{}
@@ -282,15 +283,16 @@ func DefaultConfig() *Config {
 			GCPercent:   100,
 		},
 		Browser: BrowserConfig{
-			UserDataRoot:           "data",
-			DefaultFingerprintArgs: defaultFingerprintArgsForOS(goruntime.GOOS),
-			DefaultLaunchArgs:      []string{"--disable-sync", "--no-first-run"},
-			DefaultStartURLs:       DefaultBrowserStartURLs(),
-			LightStartEnabled:      boolPtr(true),
-			RestoreLastSession:     false,
-			StartReadyTimeoutMs:    3000,
-			StartStableWindowMs:    1200,
-			DefaultConnectorType:   BrowserConnectorXray,
+			BackgroundDownloadPolicy: BrowserDownloadsStrict,
+			UserDataRoot:             "data",
+			DefaultFingerprintArgs:   defaultFingerprintArgsForOS(goruntime.GOOS),
+			DefaultLaunchArgs:        []string{"--disable-sync", "--no-first-run"},
+			DefaultStartURLs:         DefaultBrowserStartURLs(),
+			LightStartEnabled:        boolPtr(true),
+			RestoreLastSession:       false,
+			StartReadyTimeoutMs:      3000,
+			StartStableWindowMs:      1200,
+			DefaultConnectorType:     BrowserConnectorXray,
 		},
 		ProxyCheck: ProxyCheckConfig{
 			BridgeStartTimeoutMs: 15000,

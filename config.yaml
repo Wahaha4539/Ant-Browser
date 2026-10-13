@@ -35,6 +35,7 @@ logging:
             - token
             - secret
 browser:
+    background_download_policy: strict
     user_data_root: data
     default_fingerprint_args:
         - --fingerprint-brand=Chrome
@@ -71,3 +72,10 @@ automation:
     node_source: auto
     node_version: 22.15.1
     playwright_core_version: 1.59.0
+backup:
+    channels:
+        openlist:
+            remote_path: ant-chrome/backups
+    schedule:
+        enabled: false
+        daily_time: "02:00"
