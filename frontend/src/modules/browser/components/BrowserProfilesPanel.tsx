@@ -10,6 +10,7 @@ import type { BrowserCore, BrowserProfile, BrowserProxy, ProxySpeedTestResult } 
 import { browserProxyTestSpeed, testProxyConnectivity } from '../api'
 import type { BrowserViewMode } from './BrowserListLayout'
 import { BrowserTrafficCell, BrowserTrafficSummary, useBrowserTraffic } from './BrowserTraffic'
+import { BrowserDomainTrafficModal } from './BrowserDomainTrafficModal'
 import type { BrowserTrafficSnapshot } from '../types'
 import { KeywordInlineRow, LaunchCodeCell } from './BrowserListWidgets'
 
@@ -326,6 +327,7 @@ function BrowserProfileCard({
   profile,
   traffic,
   trafficUnavailable,
+  onOpenTrafficDetail,
   proxy,
   isSelected,
   status,
@@ -347,6 +349,7 @@ function BrowserProfileCard({
   profile: BrowserProfile
   traffic?: BrowserTrafficSnapshot
   trafficUnavailable?: boolean
+  onOpenTrafficDetail: () => void
   proxy: BrowserProxy | undefined
   isSelected: boolean
   status: ProfileStatus
@@ -421,7 +424,7 @@ function BrowserProfileCard({
         </div>
       </div>
 
-      <div className="py-2"><BrowserTrafficCell row={traffic} unavailable={trafficUnavailable} /></div>
+      <div className="py-2"><BrowserTrafficCell row={traffic} unavailable={trafficUnavailable} onOpenDetail={onOpenTrafficDetail} /></div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 py-1 shrink-0">
         <div className="flex flex-col gap-0.5">
@@ -486,6 +489,7 @@ export function BrowserProfilesPanel({
   onDelete,
 }: BrowserProfilesPanelProps) {
   const traffic = useBrowserTraffic()
+  const [trafficProfile, setTrafficProfile] = useState<BrowserProfile | null>(null)
   const allSelected = profiles.length > 0 && selectedIds.size === profiles.length
   const partiallySelected = selectedIds.size > 0 && selectedIds.size < profiles.length
   const [openMoreProfileId, setOpenMoreProfileId] = useState<string | null>(null)
@@ -573,7 +577,7 @@ export function BrowserProfilesPanel({
       key: 'traffic',
       title: '流量 / 实时速度',
       width: 195,
-      render: (_, record) => <BrowserTrafficCell row={traffic.rows[record.profileId]} unavailable={!!traffic.error} />,
+      render: (_, record) => <BrowserTrafficCell row={traffic.rows[record.profileId]} unavailable={!!traffic.error} onOpenDetail={() => setTrafficProfile(record)} />,
     },
     {
       key: 'launchCode',
@@ -636,6 +640,7 @@ export function BrowserProfilesPanel({
   return (
     <Card padding="none">
       <BrowserTrafficSummary profiles={profiles} {...traffic} />
+      <BrowserDomainTrafficModal profileId={trafficProfile?.profileId ?? null} profileName={trafficProfile?.profileName} onClose={() => setTrafficProfile(null)} />
       {loading ? (
         <div className="flex items-center justify-center py-10 text-sm text-[var(--color-text-muted)]">加载中...</div>
       ) : profiles.length === 0 ? (
@@ -655,6 +660,7 @@ export function BrowserProfilesPanel({
                 profile={profile}
                 traffic={traffic.rows[profile.profileId]}
                 trafficUnavailable={!!traffic.error}
+                onOpenTrafficDetail={() => setTrafficProfile(profile)}
                 proxy={proxies.find(item => item.proxyId === profile.proxyId)}
                 isSelected={selectedIds.has(profile.profileId)}
                 status={getProfileStatus(profile)}

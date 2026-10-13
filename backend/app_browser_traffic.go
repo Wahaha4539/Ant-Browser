@@ -3,6 +3,7 @@ package backend
 import (
 	"ant-chrome/backend/internal/traffic"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -129,6 +130,7 @@ func (a *App) BrowserTrafficList() ([]BrowserTrafficSnapshot, error) {
 	}
 	byID := make(map[string]BrowserTrafficSnapshot, len(rows))
 	for _, row := range rows {
+		row.Domains = nil // Keep the periodically refreshed instance list lightweight.
 		byID[row.ProfileID] = row
 	}
 	profiles := a.browserMgr.List()
@@ -147,4 +149,88 @@ func (a *App) BrowserTrafficList() ([]BrowserTrafficSnapshot, error) {
 		result = append(result, row)
 	}
 	return result, nil
+}
+
+// BrowserTrafficDetail reads domain counters only when the detail view is open.
+func (a *App) BrowserTrafficDetail(profileID string) (BrowserTrafficSnapshot, error) {
+	rows, err := a.BrowserTrafficList()
+	if err != nil {
+		return BrowserTrafficSnapshot{}, err
+	}
+	var row BrowserTrafficSnapshot
+	found := false
+	for _, candidate := range rows {
+		if candidate.ProfileID == profileID {
+			row = candidate
+			found = true
+			break
+		}
+	}
+	if !found {
+		return BrowserTrafficSnapshot{}, fmt.Errorf("实例不存在")
+	}
+	root := a.browserTrafficRoot()
+	info, readErr := traffic.ReadRuntime(root)
+	live := false
+	if readErr == nil {
+		if callErr := traffic.Call(info, "/health", nil, nil); callErr == nil {
+			live = true
+		} else if isProcessAlive(info.PID) {
+			return BrowserTrafficSnapshot{}, fmt.Errorf("域名流量统计暂不可用：%w", callErr)
+		}
+	} else if !os.IsNotExist(readErr) {
+		return BrowserTrafficSnapshot{}, readErr
+	}
+	if live && row.DomainStatsAvailable {
+		var detail BrowserTrafficSnapshot
+		if err = traffic.Call(info, "/domains?profileId="+url.QueryEscape(profileID), nil, &detail); err != nil {
+			return BrowserTrafficSnapshot{}, fmt.Errorf("域名流量统计暂不可用：%w", err)
+		}
+		// Preserve the browser manager's unmetered status, if applicable.
+		if row.State == "unmetered" {
+			detail.State = row.State
+			detail.Message = row.Message
+		}
+		row = detail
+	} else if !live {
+		history, err := traffic.ReadSnapshots(root)
+		if err != nil {
+			return BrowserTrafficSnapshot{}, err
+		}
+		for _, candidate := range history {
+			if candidate.ProfileID == profileID {
+				row.Domains = candidate.Domains
+				row.UploadedBytes = candidate.UploadedBytes
+				row.DownloadedBytes = candidate.DownloadedBytes
+				row.SessionUploadedBytes = candidate.SessionUploadedBytes
+				row.SessionDownloadedBytes = candidate.SessionDownloadedBytes
+				break
+			}
+		}
+	}
+	var up, down, sessionUp, sessionDown int64
+	unknown := -1
+	for i, domain := range row.Domains {
+		up += domain.UploadedBytes
+		down += domain.DownloadedBytes
+		sessionUp += domain.SessionUploadedBytes
+		sessionDown += domain.SessionDownloadedBytes
+		if domain.Domain == "" {
+			unknown = i
+		}
+	}
+	if row.UploadedBytes > up || row.DownloadedBytes > down || row.SessionUploadedBytes > sessionUp || row.SessionDownloadedBytes > sessionDown {
+		if unknown == -1 {
+			unknown = len(row.Domains)
+			row.Domains = append(row.Domains, traffic.DomainSnapshot{})
+		}
+		row.Domains[unknown].UploadedBytes += max(0, row.UploadedBytes-up)
+		row.Domains[unknown].DownloadedBytes += max(0, row.DownloadedBytes-down)
+		row.Domains[unknown].SessionUploadedBytes += max(0, row.SessionUploadedBytes-sessionUp)
+		row.Domains[unknown].SessionDownloadedBytes += max(0, row.SessionDownloadedBytes-sessionDown)
+	}
+	if row.Domains == nil {
+		row.Domains = []traffic.DomainSnapshot{}
+	}
+	return row, nil
 }

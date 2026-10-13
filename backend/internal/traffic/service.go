@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -49,22 +50,32 @@ func newService(root, token string) (*service, error) {
 	return s, nil
 }
 
-func (e *entry) current() Snapshot {
+func (e *entry) current(details bool) Snapshot {
 	row := e.row
 	if e.relay != nil {
 		up, down := e.relay.uploaded.Load(), e.relay.downloaded.Load()
+		if details {
+			var domains []DomainSnapshot
+			up, down, domains = e.relay.domainSnapshot()
+			row.Domains = mergeDomains(e.row.Domains, domains, e.baseUp+up, e.baseDown+down)
+		}
 		row.UploadedBytes = e.baseUp + up
 		row.DownloadedBytes = e.baseDown + down
 		row.SessionUploadedBytes = up
 		row.SessionDownloadedBytes = down
+	} else if details {
+		row.Domains = mergeDomains(row.Domains, nil, row.UploadedBytes, row.DownloadedBytes)
+	}
+	if !details {
+		row.Domains = nil
 	}
 	return row
 }
 
-func (s *service) snapshotsLocked() []Snapshot {
+func (s *service) snapshotsLocked(includeDomains bool) []Snapshot {
 	rows := make([]Snapshot, 0, len(s.entries))
 	for _, e := range s.entries {
-		row := e.current()
+		row := e.current(includeDomains)
 		if s.persistenceError != "" {
 			row.Message = "流量历史保存失败：" + s.persistenceError
 		}
@@ -74,7 +85,7 @@ func (s *service) snapshotsLocked() []Snapshot {
 	return rows
 }
 func (s *service) saveLocked() error {
-	err := writeJSONFile(filepath.Join(s.root, "totals.json"), s.snapshotsLocked())
+	err := writeJSONFile(filepath.Join(s.root, "totals.json"), s.snapshotsLocked(true))
 	if err != nil {
 		s.persistenceError = err.Error()
 	} else {
@@ -100,15 +111,23 @@ func (s *service) start(req StartRequest) (StartResponse, error) {
 	if previous != nil && previous.relay != nil {
 		return StartResponse{}, fmt.Errorf("实例已有正在运行的计量连接，请先停止实例")
 	}
-	r, err := newRelay(upstream, req.DebugPort)
+	var history []DomainSnapshot
+	if previous != nil {
+		history = append(history, previous.current(true).Domains...)
+		for i := range history {
+			history[i].SessionUploadedBytes = 0
+			history[i].SessionDownloadedBytes = 0
+		}
+	}
+	u, _ := url.Parse(req.ProxyURL)
+	r, err := newRelay(upstream, req.DebugPort, strings.ToLower(u.Scheme), history)
 	if err != nil {
 		return StartResponse{}, err
 	}
-	u, _ := url.Parse(req.ProxyURL)
 	u.Host = r.listener.Addr().String()
 	r.proxyURL = u.String()
 	now := time.Now()
-	row := Snapshot{ProfileID: req.ProfileID, Running: true, State: "active", StartedAt: now.Format(time.RFC3339), UpdatedAt: now.Format(time.RFC3339)}
+	row := Snapshot{Domains: history, DomainStatsAvailable: true, ProfileID: req.ProfileID, Running: true, State: "active", StartedAt: now.Format(time.RFC3339), UpdatedAt: now.Format(time.RFC3339)}
 	if previous != nil {
 		row.UploadedBytes = previous.row.UploadedBytes
 		row.DownloadedBytes = previous.row.DownloadedBytes
@@ -132,7 +151,7 @@ func (s *service) stopLocked(id string) {
 		return
 	}
 	e.relay.close()
-	e.row = e.current()
+	e.row = e.current(true)
 	e.relay = nil
 	e.row.Running = false
 	e.row.State = "stopped"
@@ -197,9 +216,24 @@ func (s *service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		case "/health":
 			respond(w, map[string]bool{"ok": true})
 			return
+		case "/domains":
+			s.mu.Lock()
+			e := s.entries[r.URL.Query().Get("profileId")]
+			if e == nil {
+				s.mu.Unlock()
+				http.NotFound(w, r)
+				return
+			}
+			row := e.current(true)
+			if s.persistenceError != "" {
+				row.Message = "流量历史保存失败：" + s.persistenceError
+			}
+			s.mu.Unlock()
+			respond(w, row)
+			return
 		case "/snapshots":
 			s.mu.Lock()
-			rows := s.snapshotsLocked()
+			rows := s.snapshotsLocked(false)
 			s.mu.Unlock()
 			respond(w, rows)
 			return

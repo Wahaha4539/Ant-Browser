@@ -2126,3 +2126,84 @@ export namespace proxy {
 
 }
 
+export namespace traffic {
+
+	export class DomainSnapshot {
+	    domain: string;
+	    uploadedBytes: number;
+	    downloadedBytes: number;
+	    sessionUploadedBytes: number;
+	    sessionDownloadedBytes: number;
+
+	    static createFrom(source: any = {}) {
+	        return new DomainSnapshot(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.domain = source["domain"];
+	        this.uploadedBytes = source["uploadedBytes"];
+	        this.downloadedBytes = source["downloadedBytes"];
+	        this.sessionUploadedBytes = source["sessionUploadedBytes"];
+	        this.sessionDownloadedBytes = source["sessionDownloadedBytes"];
+	    }
+	}
+	export class Snapshot {
+	    domains?: DomainSnapshot[];
+	    domainStatsAvailable: boolean;
+	    profileId: string;
+	    uploadedBytes: number;
+	    downloadedBytes: number;
+	    sessionUploadedBytes: number;
+	    sessionDownloadedBytes: number;
+	    uploadBytesPerSecond: number;
+	    downloadBytesPerSecond: number;
+	    startedAt: string;
+	    updatedAt: string;
+	    running: boolean;
+	    state: string;
+	    message: string;
+
+	    static createFrom(source: any = {}) {
+	        return new Snapshot(source);
+	    }
+
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.domains = this.convertValues(source["domains"], DomainSnapshot);
+	        this.domainStatsAvailable = source["domainStatsAvailable"];
+	        this.profileId = source["profileId"];
+	        this.uploadedBytes = source["uploadedBytes"];
+	        this.downloadedBytes = source["downloadedBytes"];
+	        this.sessionUploadedBytes = source["sessionUploadedBytes"];
+	        this.sessionDownloadedBytes = source["sessionDownloadedBytes"];
+	        this.uploadBytesPerSecond = source["uploadBytesPerSecond"];
+	        this.downloadBytesPerSecond = source["downloadBytesPerSecond"];
+	        this.startedAt = source["startedAt"];
+	        this.updatedAt = source["updatedAt"];
+	        this.running = source["running"];
+	        this.state = source["state"];
+	        this.message = source["message"];
+	    }
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+
+}
+

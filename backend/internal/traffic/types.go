@@ -14,19 +14,29 @@ import (
 
 const HelperArgument = "--browser-traffic-helper"
 
+type DomainSnapshot struct {
+	Domain                 string `json:"domain"`
+	UploadedBytes          int64  `json:"uploadedBytes"`
+	DownloadedBytes        int64  `json:"downloadedBytes"`
+	SessionUploadedBytes   int64  `json:"sessionUploadedBytes"`
+	SessionDownloadedBytes int64  `json:"sessionDownloadedBytes"`
+}
+
 type Snapshot struct {
-	ProfileID              string  `json:"profileId"`
-	UploadedBytes          int64   `json:"uploadedBytes"`
-	DownloadedBytes        int64   `json:"downloadedBytes"`
-	SessionUploadedBytes   int64   `json:"sessionUploadedBytes"`
-	SessionDownloadedBytes int64   `json:"sessionDownloadedBytes"`
-	UploadBytesPerSecond   float64 `json:"uploadBytesPerSecond"`
-	DownloadBytesPerSecond float64 `json:"downloadBytesPerSecond"`
-	StartedAt              string  `json:"startedAt"`
-	UpdatedAt              string  `json:"updatedAt"`
-	Running                bool    `json:"running"`
-	State                  string  `json:"state"`
-	Message                string  `json:"message"`
+	Domains                []DomainSnapshot `json:"domains,omitempty"`
+	DomainStatsAvailable   bool             `json:"domainStatsAvailable"`
+	ProfileID              string           `json:"profileId"`
+	UploadedBytes          int64            `json:"uploadedBytes"`
+	DownloadedBytes        int64            `json:"downloadedBytes"`
+	SessionUploadedBytes   int64            `json:"sessionUploadedBytes"`
+	SessionDownloadedBytes int64            `json:"sessionDownloadedBytes"`
+	UploadBytesPerSecond   float64          `json:"uploadBytesPerSecond"`
+	DownloadBytesPerSecond float64          `json:"downloadBytesPerSecond"`
+	StartedAt              string           `json:"startedAt"`
+	UpdatedAt              string           `json:"updatedAt"`
+	Running                bool             `json:"running"`
+	State                  string           `json:"state"`
+	Message                string           `json:"message"`
 }
 
 type Runtime struct {

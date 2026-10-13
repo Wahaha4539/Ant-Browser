@@ -594,6 +594,14 @@ export function BrowserSnapshotRestore(arg1, arg2) {
   return window['go']['main']['App']['BrowserSnapshotRestore'](arg1, arg2);
 }
 
+export function BrowserTrafficDetail(arg1) {
+  return window['go']['main']['App']['BrowserTrafficDetail'](arg1);
+}
+
+export function BrowserTrafficList() {
+  return window['go']['main']['App']['BrowserTrafficList']();
+}
+
 export function ClearAppLogs() {
   return window['go']['main']['App']['ClearAppLogs']();
 }

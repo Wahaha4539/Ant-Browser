@@ -484,7 +484,17 @@ export interface BrowserGroupWithCount extends BrowserGroup {
   instanceCount: number
 }
 
+export interface BrowserDomainTraffic {
+  domain: string
+  uploadedBytes: number
+  downloadedBytes: number
+  sessionUploadedBytes: number
+  sessionDownloadedBytes: number
+}
+
 export interface BrowserTrafficSnapshot {
+  domains?: BrowserDomainTraffic[]
+  domainStatsAvailable?: boolean
   profileId: string
   uploadedBytes: number
   downloadedBytes: number

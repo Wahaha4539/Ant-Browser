@@ -84,7 +84,7 @@ func transfer(address string, payload []byte) error {
 func snapshot(s *service, id string) Snapshot {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.entries[id].current()
+	return s.entries[id].current(true)
 }
 func eventually(t *testing.T, check func() bool) {
 	t.Helper()

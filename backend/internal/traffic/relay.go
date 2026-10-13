@@ -12,6 +12,9 @@ import (
 type relay struct {
 	listener      net.Listener
 	upstream      string
+	scheme        string
+	domainMu      sync.Mutex
+	domains       map[string]*domainCounter
 	proxyURL      string
 	debugPort     int
 	ownerPID      atomic.Int64
@@ -27,12 +30,18 @@ type relay struct {
 	done          chan struct{}
 }
 
-func newRelay(upstream string, debugPort int) (*relay, error) {
+func newRelay(upstream string, debugPort int, scheme string, history []DomainSnapshot) (*relay, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, err
 	}
 	r := &relay{listener: ln, upstream: upstream, debugPort: debugPort, started: time.Now(), lastOwnerSeen: time.Now(), connections: make(map[net.Conn]struct{}), done: make(chan struct{})}
+	r.scheme = scheme
+	r.domains = make(map[string]*domainCounter)
+	for _, row := range history {
+		r.domains[row.Domain] = &domainCounter{}
+	}
+	r.domains[""] = &domainCounter{}
 	ctx, cancel := context.WithCancel(context.Background())
 	r.cancel = cancel
 	go func() {
@@ -60,13 +69,29 @@ func newRelay(upstream string, debugPort int) (*relay, error) {
 // Count writes, including long-lived/streaming responses, not just completed
 // requests. Wrapper prevents io.Copy from bypassing the counter via ReaderFrom.
 type countingWriter struct {
-	dst   io.Writer
-	count *atomic.Int64
+	dst    io.Writer
+	count  *atomic.Int64
+	meter  *connectionMeter
+	upload bool
 }
 
 func (w countingWriter) Write(p []byte) (int, error) {
+	// Discover request metadata before writing so an immediate response can be
+	// attributed. Only successful writes are counted, including partial writes.
+	var spans []domainSpan
+	if w.upload {
+		w.meter.relay.domainMu.Lock()
+		spans = w.meter.prepareUpload(p)
+		w.meter.relay.domainMu.Unlock()
+	}
 	n, err := w.dst.Write(p)
+	w.meter.relay.domainMu.Lock()
 	w.count.Add(int64(n))
+	if !w.upload {
+		spans = w.meter.prepareDownload(p[:n])
+	}
+	w.meter.record(spans, n, w.upload)
+	w.meter.relay.domainMu.Unlock()
 	return n, err
 }
 
@@ -86,10 +111,11 @@ func (r *relay) forward(ctx context.Context, client net.Conn) {
 	r.connections[upstream] = struct{}{}
 	r.mu.Unlock()
 	defer func() { r.mu.Lock(); delete(r.connections, upstream); r.mu.Unlock() }()
+	meter := newConnectionMeter(r)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_, err := io.Copy(countingWriter{upstream, &r.uploaded}, client)
+		_, err := io.Copy(countingWriter{dst: upstream, count: &r.uploaded, meter: meter, upload: true}, client)
 		if err != nil {
 			upstream.Close()
 			client.Close()
@@ -97,7 +123,7 @@ func (r *relay) forward(ctx context.Context, client net.Conn) {
 			tcp.CloseWrite()
 		}
 	}()
-	_, err = io.Copy(countingWriter{client, &r.downloaded}, upstream)
+	_, err = io.Copy(countingWriter{dst: client, count: &r.downloaded, meter: meter}, upstream)
 	if err != nil {
 		client.Close()
 		upstream.Close()

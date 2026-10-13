@@ -1,17 +1,10 @@
 import { useEffect, useState } from 'react'
 import { ArrowDown, ArrowUp, Activity } from 'lucide-react'
-import { Card } from '../../../shared/components'
+import { Card, Button } from '../../../shared/components'
 import { getGoApp } from '../api/runtime'
+import { formatTrafficBytes } from './trafficFormat'
+import { BrowserDomainTrafficModal } from './BrowserDomainTrafficModal'
 import type { BrowserProfile, BrowserTrafficSnapshot } from '../types'
-
-export function formatTrafficBytes(value: number | undefined): string {
-  if (value === undefined || !Number.isFinite(value)) return '—'
-  const bytes = Math.max(0, value)
-  if (bytes < 1024) return `${Math.round(bytes)} B`
-  const units = ['KiB', 'MiB', 'GiB', 'TiB', 'PiB']
-  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)) - 1, units.length - 1)
-  return `${(bytes / 1024 ** (index + 1)).toFixed(1)} ${units[index]}`
-}
 
 export function useBrowserTraffic() {
   const [rows, setRows] = useState<Record<string, BrowserTrafficSnapshot>>({})
@@ -41,8 +34,9 @@ export function useBrowserTraffic() {
   return { rows, error, loading }
 }
 
-export function BrowserTrafficCell({ row, unavailable = false }: { row?: BrowserTrafficSnapshot; unavailable?: boolean }) {
-  if (!row || row.state === 'not_started') return <span className="text-xs text-[var(--color-text-muted)]" title={row?.message}>—</span>
+export function BrowserTrafficCell({ row, unavailable = false, onOpenDetail }: { row?: BrowserTrafficSnapshot; unavailable?: boolean; onOpenDetail?: () => void }) {
+  const detailButton = onOpenDetail && <button type="button" className="ml-auto shrink-0 text-[var(--color-accent)] hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2" onClick={event => { event.stopPropagation(); onOpenDetail() }} aria-label="查看域名流量详情">详情</button>
+  if (!row || row.state === 'not_started') return <div className="flex min-w-[165px] items-center gap-3 text-xs text-[var(--color-text-muted)]"><span title={row?.message}>—</span>{detailButton}</div>
   const title = [row.message, `本次上传 ${formatTrafficBytes(row.sessionUploadedBytes)} · 下载 ${formatTrafficBytes(row.sessionDownloadedBytes)}`, '仅计量通过实例代理连接的 TCP 字节，非代理商账单'].filter(Boolean).join('\n')
   return (
     <div className="min-w-[165px] space-y-1 text-xs tabular-nums" title={title} data-testid="traffic-cell">
@@ -50,8 +44,10 @@ export function BrowserTrafficCell({ row, unavailable = false }: { row?: Browser
         <span className="inline-flex items-center gap-1"><ArrowUp className="h-3 w-3" aria-hidden="true" /><span className="sr-only">累计上传</span>{formatTrafficBytes(row.uploadedBytes)}</span>
         <span className="inline-flex items-center gap-1"><ArrowDown className="h-3 w-3 text-[var(--color-accent)]" aria-hidden="true" /><span className="sr-only">累计下载</span>{formatTrafficBytes(row.downloadedBytes)}</span>
       </div>
-      <div className={unavailable || row.state === 'unmetered' || row.message ? 'text-[var(--color-warning)]' : 'text-[var(--color-text-muted)]'}>
+      <div className="flex items-center gap-3">
+        <span className={unavailable || row.state === 'unmetered' || row.message ? 'text-[var(--color-warning)]' : 'text-[var(--color-text-muted)]'}>
         {unavailable ? '统计暂不可用' : row.state === 'unmetered' ? '当前连接未计量' : row.message ? '历史保存异常' : row.running ? `↑ ${formatTrafficBytes(row.uploadBytesPerSecond)}/s  ↓ ${formatTrafficBytes(row.downloadBytesPerSecond)}/s` : '已停止 · 历史保留'}
+        </span>{detailButton}
       </div>
     </div>
   )
@@ -72,6 +68,7 @@ export function BrowserTrafficSummary({ profiles, rows, error, loading }: { prof
 
 export function BrowserTrafficDetail({ profileId }: { profileId: string }) {
   const { rows, error, loading } = useBrowserTraffic()
+  const [detailOpen, setDetailOpen] = useState(false)
   const row = rows[profileId]
   const recorded = row && row.state !== 'not_started'
   const active = row?.state === 'active' && !error
@@ -88,6 +85,8 @@ export function BrowserTrafficDetail({ profileId }: { profileId: string }) {
       <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
         {metrics.map(([label, value]) => <div key={label}><dt className="text-xs text-[var(--color-text-muted)]">{label}</dt><dd className="mt-1 text-lg font-semibold tabular-nums text-[var(--color-text-primary)]">{value}</dd></div>)}
       </dl>
+      <div className="mt-4"><Button size="sm" variant="secondary" onClick={() => setDetailOpen(true)}>查看域名流量详情</Button></div>
+      <BrowserDomainTrafficModal profileId={detailOpen ? profileId : null} onClose={() => setDetailOpen(false)} />
       <p className="mt-4 text-xs text-[var(--color-text-muted)]">{loading ? '读取统计中…' : error || row?.message || (row?.running ? '正在计量，退出应用并保留浏览器后继续统计。' : '历史数据保留，启动实例后继续累计。')}</p>
       <p className="mt-1 text-xs text-[var(--color-text-muted)]">仅统计通过实例代理连接的 TCP 字节，含后台请求与协议交互；不含 UDP、绕过代理的连接，不等同代理商账单。</p>
     </Card>

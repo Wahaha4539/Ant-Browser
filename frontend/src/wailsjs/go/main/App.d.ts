@@ -6,6 +6,7 @@ import {backup} from '../models';
 import {config} from '../models';
 import {browser} from '../models';
 import {proxy} from '../models';
+import {traffic} from '../models';
 import {logger} from '../models';
 import {launchcode} from '../models';
 import {time} from '../models';
@@ -305,6 +306,10 @@ export function BrowserSnapshotDelete(arg1:string,arg2:string):Promise<void>;
 export function BrowserSnapshotList(arg1:string):Promise<Array<backend.SnapshotInfo>>;
 
 export function BrowserSnapshotRestore(arg1:string,arg2:string):Promise<void>;
+
+export function BrowserTrafficDetail(arg1:string):Promise<traffic.Snapshot>;
+
+export function BrowserTrafficList():Promise<Array<traffic.Snapshot>>;
 
 export function ClearAppLogs():Promise<void>;
 
